@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rilevazione Fermi Macchina (Supabase)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        .scanner-target:focus {
+            outline: 2px solid #2563eb;
+            box-shadow: 0 0 10px #2563eb;
+        }
+        .toast {
+            visibility: hidden;
+            min-width: 250px;
+            margin-left: -125px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 16px;
+            position: fixed;
+            z-index: 100;
+            left: 50%;
+            bottom: 30px;
+            opacity: 0;
+            transition: opacity 0.5s, visibility 0.5s;
+        }
+        .toast.show {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans antialiased">
+
+    <div id="app-container" class="max-w-lg mx-auto p-4 min-h-screen">
+
+        <!-- Vista di Autenticazione -->
+        <div id="authView">
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">Accesso Richiesto</h1>
+                
+                <form id="loginForm" class="mb-6">
+                    <h2 class="text-lg font-semibold mb-3">Login</h2>
+                    <div class="mb-4">
+                        <label for="loginEmail" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input type="email" id="loginEmail" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div class="mb-4">
+                        <label for="loginPassword" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                        <input type="password" id="loginPassword" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700">
+                        Accedi
+                    </button>
+                </form>
+
+                <form id="registerForm">
+                    <h2 class="text-lg font-semibold mb-3">Non hai un account? Registrati</h2>
+                    <div class="mb-4">
+                        <label for="registerEmail" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input type="email" id="registerEmail" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div class="mb-4">
+                        <label for="registerPassword" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                        <input type="password" id="registerPassword" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <button type="submit" class="w-full bg-gray-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-gray-700">
+                        Registra Nuovo Utente
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Vista di Selezione Utente -->
+        <div id="loginView" class="hidden">
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="flex justify-between items-center mb-6">
+                    <h1 class="text-2xl font-bold text-gray-800">Rilevazione Fermi</h1>
+                    <button id="authLogoutButton" class="text-sm text-red-600 hover:text-red-800 font-medium">
+                        Logout
+                    </button>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="userSelect" class="block text-sm font-medium text-gray-700 mb-1">Seleziona Utente</label>
+                    <select id="userSelect" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Caricamento...</option>
+                    </select>
+                </div>
+                
+                <div class="mb-6">
+                    <label for="lineSelect" class="block text-sm font-medium text-gray-700 mb-1">Seleziona Linea</label>
+                    <select id="lineSelect" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Caricamento...</option>
+                    </select>
+                </div>
+                
+                <button id="loginButton" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200">
+                    Accedi
+                </button>
+            </div>
+        </div>
+
+        <!-- Vista Principale dell'Applicazione -->
+        <div id="appView" class="hidden">
+            <div class="bg-white p-4 rounded-lg shadow-md mb-4 flex justify-between items-center">
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800">Registra Fermo</h1>
+                    <p class="text-sm text-gray-600">
+                        Utente: <span id="currentUserDisplay" class="font-semibold"></span> | 
+                        Linea: <span id="currentLineDisplay" class="font-semibold"></span>
+                    </p>
+                </div>
+                <button id="logoutButton" class="text-sm text-red-600 hover:text-red-800 font-medium">
+                    Esci
+                </button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="mb-4 border-b border-gray-200">
+                <nav class="flex space-x-2" aria-label="Tabs">
+                    <button id="tabDurataBtn" class="tab-button px-4 py-2 text-sm font-medium text-blue-600 border-b-2 border-blue-600 rounded-t-md">
+                        Registra Durata
+                    </button>
+                    <button id="tabStartStopBtn" class="tab-button px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+                        Avvia/Chiudi Fermo
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Pannello 1: Registra Durata -->
+            <div id="tabDurataPanel" class="tab-panel">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <p class="text-sm text-gray-600 mb-4">Scansiona il codice guasto, poi inserisci o scansiona la durata in secondi.</p>
+                    <div class="mb-4">
+                        <label for="codiceGuastoInput" class="block text-sm font-medium text-gray-700 mb-1">Codice Guasto</label>
+                        <input type="text" id="codiceGuastoInput" class="scanner-target w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="Scansiona codice guasto...">
+                    </div>
+                    <div class="mb-4">
+                        <label for="durataInput" class="block text-sm font-medium text-gray-700 mb-1">Durata (secondi)</label>
+                        <input type="number" id="durataInput" class="scanner-target w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="Digita o scansiona durata...">
+                    </div>
+                    <button id="submitDurataButton" class="w-full bg-green-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-green-700 transition duration-200">
+                        Salva Fermo
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pannello 2: Avvia/Chiudi Fermo -->
+            <div id="tabStartStopPanel" class="tab-panel hidden">
+                <div class="bg-white p-6 rounded-lg shadow-md mb-4">
+                    <p class="text-sm text-gray-600 mb-4">Scansiona il codice guasto e premi "Avvia Fermo" per iniziare un nuovo fermo.</p>
+                    <div class="mb-4">
+                        <label for="codiceGuastoStartInput" class="block text-sm font-medium text-gray-700 mb-1">Codice Guasto</label>
+                        <input type="text" id="codiceGuastoStartInput" class="scanner-target w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="Scansiona codice guasto...">
+                    </div>
+                    <button id="startDowntimeButton" class="w-full bg-red-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-red-700 transition duration-200">
+                        Avvia Fermo
+                    </button>
+                </div>
+                
+                <h2 class="text-lg font-semibold text-gray-800 mt-6 mb-2">Fermi Attivi (Linea <span id="currentLineDisplay2" class="font-semibold"></span>)</h2>
+                <div id="activeDowntimesList" class="space-y-3">
+                    <p id="noActiveDowntimes" class="text-gray-500 text-center py-4">Nessun fermo attivo.</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        // CONFIGURAZIONE SUPABASE
+        const SUPABASE_URL = 'https://hmyprmfxyuqidambemaf.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhteXBybWZ4eXVxaWRhbWJlbWFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1ODkyODIsImV4cCI6MjA3ODE2NTI4Mn0.kn-dZkij3pDHivK0BVmAxLhvNbiB-KD_BWBYnvDNTDA';
+
+        // CORREZIONE: Accedi correttamente al client Supabase
+        const dbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Stato dell'applicazione
+        let appState = {
+            selectedUserId: null,
+            selectedLineId: null,
+            selectedUserDesc: '',
+            selectedLineDesc: ''
+        };
+
+        let downtimeChannel = null;
+
+        // Elementi DOM
+        const authView = document.getElementById('authView');
+        const loginForm = document.getElementById('loginForm');
+        const registerForm = document.getElementById('registerForm');
+        const loginView = document.getElementById('loginView');
+        const appView = document.getElementById('appView');
+        const authLogoutButton = document.getElementById('authLogoutButton');
+        const userSelect = document.getElementById('userSelect');
+        const lineSelect = document.getElementById('lineSelect');
+        const loginButton = document.getElementById('loginButton');
+        const logoutButton = document.getElementById('logoutButton');
+        const currentUserDisplay = document.getElementById('currentUserDisplay');
+        const currentLineDisplay = document.getElementById('currentLineDisplay');
+        const currentLineDisplay2 = document.getElementById('currentLineDisplay2');
+        const tabDurataBtn = document.getElementById('tabDurataBtn');
+        const tabStartStopBtn = document.getElementById('tabStartStopBtn');
+        const tabDurataPanel = document.getElementById('tabDurataPanel');
+        const tabStartStopPanel = document.getElementById('tabStartStopPanel');
+        const codiceGuastoInput = document.getElementById('codiceGuastoInput');
+        const durataInput = document.getElementById('durataInput');
+        const submitDurataButton = document.getElementById('submitDurataButton');
+        const codiceGuastoStartInput = document.getElementById('codiceGuastoStartInput');
+        const startDowntimeButton = document.getElementById('startDowntimeButton');
+        const activeDowntimesList = document.getElementById('activeDowntimesList');
+        const noActiveDowntimes = document.getElementById('noActiveDowntimes');
+
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = "toast show";
+            if (isError) {
+                toast.style.backgroundColor = "#e53e3e";
+            } else {
+                toast.style.backgroundColor = "#333";
+            }
+            setTimeout(() => {
+                toast.className = toast.className.replace("show", "");
+            }, 3000);
+        }
+
+        async function handleAuthLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            const { error } = await dbClient.auth.signInWithPassword({ email, password });
+
+            if (error) {
+                console.error("Errore di login:", error.message);
+                showToast("Errore di login: " + error.message, true);
+            } else {
+                showToast("Login effettuato!");
+            }
+        }
+
+        async function handleAuthRegister(e) {
+            e.preventDefault();
+            const email = document.getElementById('registerEmail').value;
+            const password = document.getElementById('registerPassword').value;
+
+            const { error } = await dbClient.auth.signUp({ email, password });
+
+            if (error) {
+                console.error("Errore di registrazione:", error.message);
+                showToast("Errore di registrazione: " + error.message, true);
+            } else {
+                showToast("Registrazione completata! Effettua il login.");
+            }
+        }
+
+        async function handleAuthLogout() {
+            const { error } = await dbClient.auth.signOut();
+            if (error) {
+                console.error("Errore di logout:", error.message);
+                showToast("Errore di logout.", true);
+            }
+        }
+
+        function setupAuthListener() {
+            dbClient.auth.onAuthStateChange((event, session) => {
+                if (session) {
+                    console.log("Sessione attiva:", session.user.email);
+                    authView.classList.add('hidden');
+                    if (appView.classList.contains('hidden')) {
+                        loginView.classList.remove('hidden');
+                    }
+                    loadLoginData();
+                } else {
+                    console.log("Nessuna sessione.");
+                    authView.classList.remove('hidden');
+                    loginView.classList.add('hidden');
+                    appView.classList.add('hidden');
+                    handleLogout();
+                }
+            });
+        }
+
+        async function loadLoginData() {
+            const { data: users, error: userError } = await dbClient
+                .from('tab_utenti')
+                .select('codice, descrizione');
+            
+            if (userError) {
+                console.error("Errore nel caricare gli utenti:", userError.message);
+                showToast("Errore caricamento utenti.", true);
+            } else {
+                userSelect.innerHTML = '<option value="">Seleziona Utente...</option>';
+                users.forEach((user) => {
+                    const option = document.createElement('option');
+                    option.value = user.codice; 
+                    option.textContent = user.descrizione || user.codice;
+                    userSelect.appendChild(option);
+                });
+            }
+
+            const { data: lines, error: lineError } = await dbClient
+                .from('tab_linea')
+                .select('codice, descrizione');
+
+            if (lineError) {
+                console.error("Errore nel caricare le linee:", lineError.message);
+                showToast("Errore caricamento linee.", true);
+            } else {
+                lineSelect.innerHTML = '<option value="">Seleziona Linea...</option>';
+                lines.forEach((line) => {
+                    const option = document.createElement('option');
+                    option.value = line.codice;
+                    option.textContent = line.descrizione || line.codice;
+                    lineSelect.appendChild(option);
+                });
+            }
+        }
+
+        function handleLogin() {
+            const selectedUserId = userSelect.value;
+            const selectedLineId = lineSelect.value;
+            
+            if (!selectedUserId || !selectedLineId) {
+                showToast("Seleziona sia utente che linea.", true);
+                return;
+            }
+
+            appState.selectedUserId = selectedUserId;
+            appState.selectedLineId = selectedLineId;
+            appState.selectedUserDesc = userSelect.options[userSelect.selectedIndex].text;
+            appState.selectedLineDesc = lineSelect.options[lineSelect.selectedIndex].text;
+
+            currentUserDisplay.textContent = appState.selectedUserDesc;
+            currentLineDisplay.textContent = appState.selectedLineDesc;
+            currentLineDisplay2.textContent = appState.selectedLineDesc;
+
+            loginView.classList.add('hidden');
+            appView.classList.remove('hidden');
+
+            subscribeToDowntimes();
+            codiceGuastoInput.focus();
+        }
+
+        function handleLogout() {
+            appState = { selectedUserId: null, selectedLineId: null, selectedUserDesc: '', selectedLineDesc: '' };
+
+            if (downtimeChannel) {
+                downtimeChannel.unsubscribe();
+                downtimeChannel = null;
+            }
+            
+            loginView.classList.remove('hidden');
+            appView.classList.add('hidden');
+            userSelect.value = "";
+            lineSelect.value = "";
+            activeDowntimesList.innerHTML = "";
+        }
+
+        async function fetchActiveDowntimes() {
+            if (!appState.selectedLineId) return;
+
+            const { data, error } = await dbClient
+                .from('tab_rilevazioni')
+                .select('*')
+                .eq('codice_linea', appState.selectedLineId)
+                .is('timestamp_end', null); 
+
+            if (error) {
+                console.error("Errore nel caricare i fermi attivi:", error.message);
+                showToast("Errore caricamento fermi attivi.", true);
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                activeDowntimesList.innerHTML = "";
+                noActiveDowntimes.classList.remove('hidden');
+            } else {
+                noActiveDowntimes.classList.add('hidden');
+                activeDowntimesList.innerHTML = ""; 
+                
+                data.forEach((downtime) => {
+                    const startTime = new Date(downtime.timestamp_start);
+                    const elapsed = new Date() - startTime;
+                    const minutes = Math.floor(elapsed / 60000);
+                    const seconds = Math.floor((elapsed % 60000) / 1000);
+
+                    const div = document.createElement('div');
+                    div.className = "bg-gray-50 p-4 rounded-lg shadow-sm border border-gray-200 flex justify-between items-center";
+                    div.innerHTML = `
+                        <div>
+                            <p class="font-semibold text-gray-800">Guasto: ${downtime.codice_guasto}</p>
+                            <p class="text-sm text-gray-600">Iniziato da: ${downtime.utente_start_desc || 'N/D'} </p>
+                            <p class="text-sm text-gray-600">Da: ${minutes}m ${seconds}s</p>
+                        </div>
+                        <button data-id="${downtime.id}" data-start="${downtime.timestamp_start}" data-guasto="${downtime.codice_guasto}" class="stop-downtime-btn bg-blue-600 text-white px-3 py-1.5 rounded-md font-semibold text-sm hover:bg-blue-700">
+                            FINE FERMO
+                        </button>
+                    `;
+                    activeDowntimesList.appendChild(div);
+                });
+            }
+        }
+
+        function subscribeToDowntimes() {
+            if (downtimeChannel) {
+                downtimeChannel.unsubscribe();
+            }
+
+            downtimeChannel = dbClient.channel('public:tab_rilevazioni')
+                .on('postgres_changes', 
+                    { 
+                        event: '*', 
+                        schema: 'public', 
+                        table: 'tab_rilevazioni',
+                        filter: `codice_linea=eq.${appState.selectedLineId}` 
+                    },
+                    (payload) => {
+                        console.log('Cambiamento realtime ricevuto!', payload);
+                        fetchActiveDowntimes();
+                    }
+                )
+                .subscribe((status, err) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('Connesso al realtime per i fermi!');
+                        fetchActiveDowntimes();
+                    }
+                    if (status === 'CHANNEL_ERROR') {
+                        console.error('Errore canale realtime:', err);
+                        showToast("Errore di connessione realtime.", true);
+                    }
+                });
+        }
+
+        function switchTab(targetTab) {
+            if (targetTab === 'durata') {
+                tabDurataBtn.classList.add('text-blue-600', 'border-blue-600');
+                tabDurataBtn.classList.remove('text-gray-500', 'hover:text-gray-700');
+                tabDurataPanel.classList.remove('hidden');
+                tabStartStopBtn.classList.add('text-gray-500', 'hover:text-gray-700');
+                tabStartStopBtn.classList.remove('text-blue-600', 'border-blue-600');
+                tabStartStopPanel.classList.add('hidden');
+                codiceGuastoInput.focus();
+            } else {
+                tabStartStopBtn.classList.add('text-blue-600', 'border-blue-600');
+                tabStartStopBtn.classList.remove('text-gray-500', 'hover:text-gray-700');
+                tabStartStopPanel.classList.remove('hidden');
+                tabDurataBtn.classList.add('text-gray-500', 'hover:text-gray-700');
+                tabDurataBtn.classList.remove('text-blue-600', 'border-blue-600');
+                tabDurataPanel.classList.add('hidden');
+                codiceGuastoStartInput.focus();
+            }
+        }
+        
+        async function handleSubmitDurata() {
+            const codiceGuasto = codiceGuastoInput.value.trim();
+            const durata = parseInt(durataInput.value, 10);
+
+            if (!codiceGuasto) {
+                showToast("Inserire un codice guasto.", true);
+                codiceGuastoInput.focus();
+                return;
+            }
+            if (isNaN(durata) || durata <= 0) {
+                showToast("Inserire una durata valida in secondi.", true);
+                durataInput.focus();
+                return;
+            }
+            
+            const startTime = new Date();
+            const endTime = new Date(startTime.getTime());
+            
+            const docData = {
+                codice_guasto: codiceGuasto,
+                codice_linea: appState.selectedLineId,
+                codice_utente_start: appState.selectedUserId,
+                utente_start_desc: appState.selectedUserDesc,
+                linea_desc: appState.selectedLineDesc,
+                timestamp_start: startTime.toISOString(),
+                timestamp_end: endTime.toISOString(),
+                duration_seconds: durata
+            };
+
+            const { error } = await dbClient.from('tab_rilevazioni').insert(docData);
+
+            if (error) {
+                console.error("Errore nel salvare il fermo:", error.message);
+                showToast("Errore durante il salvataggio.", true);
+            } else {
+                showToast(`Fermo '${codiceGuasto}' (${durata}s) salvato.`);
+                codiceGuastoInput.value = "";
+                durataInput.value = "";
+                codiceGuastoInput.focus();
+            }
+        }
+        
+        async function handleStartDowntime() {
+            const codiceGuasto = codiceGuastoStartInput.value.trim();
+            if (!codiceGuasto) {
+                showToast("Inserire un codice guasto.", true);
+                codiceGuastoStartInput.focus();
+                return;
+            }
+            
+            const docData = {
+                codice_guasto: codiceGuasto,
+                codice_linea: appState.selectedLineId,
+                codice_utente_start: appState.selectedUserId,
+                utente_start_desc: appState.selectedUserDesc,
+                linea_desc: appState.selectedLineDesc,
+                timestamp_start: new Date().toISOString(),
+                timestamp_end: null,
+                duration_seconds: null,
+                codice_utente_end: null
+            };
+
+            const { error } = await dbClient.from('tab_rilevazioni').insert(docData);
+
+            if (error) {
+                console.error("Errore nell'avviare il fermo:", error.message);
+                showToast("Errore durante l'avvio.", true);
+            } else {
+                showToast(`Fermo '${codiceGuasto}' avviato.`);
+                codiceGuastoStartInput.value = "";
+                codiceGuastoStartInput.focus();
+            }
+        }
+
+        async function handleStopDowntime(button) {
+            const downtimeId = button.getAttribute('data-id');
+            const startTimeStr = button.getAttribute('data-start');
+            const codiceGuasto = button.getAttribute('data-guasto');
+
+            const startTime = new Date(startTimeStr);
+            const endTime = new Date(); 
+            const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+
+            const { error } = await dbClient
+                .from('tab_rilevazioni')
+                .update({
+                    timestamp_end: endTime.toISOString(),
+                    duration_seconds: duration,
+                    codice_utente_end: appState.selectedUserId,
+                    utente_end_desc: appState.selectedUserDesc
+                })
+                .eq('id', downtimeId);
+
+            if (error) {
+                console.error("Errore nel terminare il fermo:", error.message);
+                showToast("Errore durante la chiusura.", true);
+            } else {
+                showToast(`Fermo '${codiceGuasto}' terminato. Durata: ${duration}s.`);
+            }
+        }
+
+        // Event Listeners
+        loginForm.addEventListener('submit', handleAuthLogin);
+        registerForm.addEventListener('submit', handleAuthRegister);
+        authLogoutButton.addEventListener('click', handleAuthLogout);
+        loginButton.addEventListener('click', handleLogin);
+        logoutButton.addEventListener('click', handleLogout);
+        tabDurataBtn.addEventListener('click', () => switchTab('durata'));
+        tabStartStopBtn.addEventListener('click', () => switchTab('startstop'));
+        submitDurataButton.addEventListener('click', handleSubmitDurata);
+        startDowntimeButton.addEventListener('click', handleStartDowntime);
+
+        codiceGuastoInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); durataInput.focus(); }
+        });
+        durataInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); submitDurataButton.click(); }
+        });
+        codiceGuastoStartInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); startDowntimeButton.click(); }
+        });
+        activeDowntimesList.addEventListener('click', (e) => {
+            const stopButton = e.target.closest('.stop-downtime-btn');
+            if (stopButton) {
+                handleStopDowntime(stopButton);
+            }
+        });
+
+        // Avvio
+        setupAuthListener();
+    </script>
+</body>
+</html>
